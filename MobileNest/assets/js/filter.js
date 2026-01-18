@@ -3,6 +3,7 @@
  * FILE: filter.js
  * PURPOSE: Handle product filtering
  * MODE: HYBRID (PHP initial render + AJAX filter)
+ * FIX: Correct image URL building for local uploads
  * ============================================
  */
 
@@ -20,10 +21,10 @@ function buildImageUrl(gambar) {
     
     // Check if it's a filename (local upload) or URL
     if (!gambar.includes('http') && !gambar.includes('/')) {
-        // It's a filename - build UploadHandler URL
-        // Format: /MobileNest/api/upload/serve.php?file=filename.jpg&type=produk
-        const baseUrl = window.location.origin + '/MobileNest';
-        return baseUrl + '/api/upload/serve.php?file=' + encodeURIComponent(gambar) + '&type=produk';
+        // It's a filename - build direct path to uploads folder
+        // Format: /MobileNest/uploads/produk/filename.jpg
+        const baseUrl = window.location.origin;
+        return baseUrl + '/MobileNest/uploads/produk/' + encodeURIComponent(gambar);
     }
     
     // It's already a URL or path
@@ -207,13 +208,15 @@ function renderProducts(products) {
     // Render product cards
     container.innerHTML = products.map(product => {
         const imageUrl = buildImageUrl(product.gambar);
+        console.log('Product:', product.nama_produk, '- gambar:', product.gambar, '- URL:', imageUrl);
         return `
         <div class="product-card">
             <div class="card border-0 shadow-sm h-100 transition">
                 <!-- Product Image -->
                 <div class="card-img-top bg-light d-flex align-items-center justify-content-center" style="height: 200px; position: relative; overflow: hidden;">
                     ${imageUrl ? `
-                        <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.nama_produk)}" style="width: 100%; height: 100%; object-fit: cover;">
+                        <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.nama_produk)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <i class="bi bi-phone" style="font-size: 3rem; color: #ccc; display: none; align-items: center; justify-content: center;"></i>
                     ` : `
                         <i class="bi bi-phone" style="font-size: 3rem; color: #ccc;"></i>
                     `}
