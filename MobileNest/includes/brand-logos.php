@@ -30,11 +30,13 @@ $brand_logos = [
         'alt' => 'Vivo Logo'
     ],
     'Realme' => [
-        // ✅ USE LOCAL LOGO with absolute path (works from any subdirectory)
+        // ✅ USE LOCAL LOGO with absolute path + fallback to CDN
         'image_url' => $realme_logo_url,
         'alt' => 'Realme Logo',
         'fallback_urls' => [
-            // Fallback to generic smartphone icon if local fails
+            // If local file not found, try GitHub raw CDN
+            'https://raw.githubusercontent.com/RifalDU/MobileNestV7/main/MobileNest/assets/images/realme-logo.jpg',
+            // Then fallback to generic smartphone icon
             'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/smartphone.svg'
         ]
     ]
