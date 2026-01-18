@@ -196,9 +196,9 @@ function log_activity($action, $description = '') {
 
 
 /**
- * Handle file upload securely
+ * Handle file upload securely - FIXED to use correct upload path
  */
-function upload_file($file_input, $allowed_types = ['jpg', 'jpeg', 'png', 'gif'], $max_size = 5242880) {
+function upload_file($file_input, $allowed_types = ['jpg', 'jpeg', 'png', 'gif'], $max_size = 5242880, $upload_type = 'produk') {
     if (!isset($_FILES[$file_input])) {
         return ['success' => false, 'message' => 'File not found'];
     }
@@ -230,14 +230,24 @@ function upload_file($file_input, $allowed_types = ['jpg', 'jpeg', 'png', 'gif']
     }
 
 
+    // ✅ FIX: Use correct upload path based on type
+    if ($upload_type === 'pembayaran') {
+        $upload_dir = UPLOADS_PEMBAYARAN_PATH;
+        $upload_url = UPLOADS_PEMBAYARAN_URL;
+    } else {
+        $upload_dir = UPLOADS_PRODUK_PATH;
+        $upload_url = UPLOADS_PRODUK_URL;
+    }
+
+
     // Generate unique filename
     $new_filename = uniqid() . '.' . $file_ext;
-    $upload_path = UPLOADS_PATH . '/' . $new_filename;
+    $upload_path = $upload_dir . '/' . $new_filename;
 
 
     // Create uploads directory if not exists
-    if (!is_dir(UPLOADS_PATH)) {
-        mkdir(UPLOADS_PATH, 0755, true);
+    if (!is_dir($upload_dir)) {
+        mkdir($upload_dir, 0755, true);
     }
 
 
@@ -247,7 +257,7 @@ function upload_file($file_input, $allowed_types = ['jpg', 'jpeg', 'png', 'gif']
             'success' => true,
             'filename' => $new_filename,
             'path' => $upload_path,
-            'url' => SITE_URL . '/uploads/' . $new_filename
+            'url' => $upload_url . $new_filename
         ];
     }
 
