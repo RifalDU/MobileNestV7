@@ -5,6 +5,9 @@
  * Local fallbacks for unreliable CDN sources
  */
 
+// Get SITE_URL from config if available
+$realme_logo_url = (defined('SITE_URL') ? SITE_URL : '') . '/assets/images/realme-logo.jpg';
+
 $brand_logos = [
     'Apple' => [
         'image_url' => 'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/apple.svg',
@@ -27,8 +30,8 @@ $brand_logos = [
         'alt' => 'Vivo Logo'
     ],
     'Realme' => [
-        // ✅ USE LOCAL LOGO (no background version)
-        'image_url' => 'assets/images/realme-logo.jpg',
+        // ✅ USE LOCAL LOGO with absolute path (works from any subdirectory)
+        'image_url' => $realme_logo_url,
         'alt' => 'Realme Logo',
         'fallback_urls' => [
             // Fallback to generic smartphone icon if local fails
