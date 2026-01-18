@@ -149,15 +149,32 @@ class UploadHandler {
     }
     
     /**
-     * Get file URL
+     * Get file URL (returns full URL instead of relative path)
      * 
      * @param string $filename Filename
      * @param string $type Type of file ('produk' or 'pembayaran')
      * @return string File URL
      */
     public static function getFileUrl($filename, $type = 'produk') {
+        // Use constants from config.php if available
+        if (defined('UPLOADS_PRODUK_URL') && $type === 'produk') {
+            return UPLOADS_PRODUK_URL . $filename;
+        }
+        if (defined('UPLOADS_PEMBAYARAN_URL') && $type === 'pembayaran') {
+            return UPLOADS_PEMBAYARAN_URL . $filename;
+        }
+        
+        // Fallback to constructing URL manually
         $upload_dir = ($type === 'pembayaran') ? self::UPLOAD_DIR_PEMBAYARAN : self::UPLOAD_DIR_PRODUK;
-        return $upload_dir . $filename;
+        
+        // Try to determine SITE_URL from current request
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? 'https://' : 'http://';
+        $site_url = $protocol . $_SERVER['HTTP_HOST'] . dirname($_SERVER['SCRIPT_NAME']);
+        
+        // Remove /admin or /user or /produk from end if present
+        $site_url = preg_replace('#/(admin|user|produk)/?$#', '', $site_url);
+        
+        return $site_url . '/' . $upload_dir . $filename;
     }
 }
 ?>
