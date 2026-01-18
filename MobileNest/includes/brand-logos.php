@@ -2,6 +2,7 @@
 /**
  * Brand Logo Configuration
  * Uses high-quality, reliable CDN sources for brand logos
+ * Local fallbacks for unreliable CDN sources
  */
 
 $brand_logos = [
@@ -26,10 +27,11 @@ $brand_logos = [
         'alt' => 'Vivo Logo'
     ],
     'Realme' => [
-        // Use Direct PNG from reliable source - Realme's official CDN
-        'image_url' => 'https://static.realme.com/realme_com/_next/static/image/public/images/logo.8b4c0f17.png',
+        // ✅ USE LOCAL LOGO (reliable)
+        'image_url' => '../assets/images/realme-logo.jpg',
         'alt' => 'Realme Logo',
         'fallback_urls' => [
+            // Fallback to generic smartphone icon if local fails
             'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/smartphone.svg'
         ]
     ]
