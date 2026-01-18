@@ -7,9 +7,11 @@
 
 class UploadHandler {
     
-    // Configuration - CORRECTED PATHS
-    const UPLOAD_DIR_PRODUK = '../uploads/produk/';  // From includes/ perspective: ../uploads/produk/
-    const UPLOAD_DIR_PEMBAYARAN = '../uploads/pembayaran/';  // From includes/ perspective
+    // Configuration - USE ABSOLUTE PATHS from config.php constants
+    // These are defined in config.php
+    // UPLOADS_PRODUK_PATH = /path/to/MobileNest/admin/uploads/produk
+    // UPLOADS_PEMBAYARAN_PATH = /path/to/MobileNest/admin/uploads/pembayaran
+    
     const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
     
     // Allowed MIME types
@@ -30,10 +32,11 @@ class UploadHandler {
     public static function uploadProductImage($file, $product_id) {
         return self::uploadFile(
             $file,
-            self::UPLOAD_DIR_PRODUK,
+            defined('UPLOADS_PRODUK_PATH') ? UPLOADS_PRODUK_PATH : null,
             self::ALLOWED_PRODUK_TYPES,
             self::ALLOWED_PRODUK_EXT,
-            'produk_' . $product_id
+            'produk_' . $product_id,
+            'produk'
         );
     }
     
@@ -47,10 +50,11 @@ class UploadHandler {
     public static function uploadPaymentProof($file, $transaction_id) {
         return self::uploadFile(
             $file,
-            self::UPLOAD_DIR_PEMBAYARAN,
+            defined('UPLOADS_PEMBAYARAN_PATH') ? UPLOADS_PEMBAYARAN_PATH : null,
             self::ALLOWED_PEMBAYARAN_TYPES,
             self::ALLOWED_PEMBAYARAN_EXT,
-            'pembayaran_' . $transaction_id
+            'pembayaran_' . $transaction_id,
+            'pembayaran'
         );
     }
     
@@ -58,13 +62,19 @@ class UploadHandler {
      * Generic file upload handler
      * 
      * @param array $file $_FILES array
-     * @param string $upload_dir Directory to upload to
+     * @param string $upload_dir Directory to upload to (absolute path from config.php constants)
      * @param array $allowed_mimes Allowed MIME types
      * @param array $allowed_ext Allowed extensions
      * @param string $prefix File prefix
+     * @param string $type Type for getFileUrl
      * @return array ['success' => bool, 'filename' => string, 'message' => string]
      */
-    private static function uploadFile($file, $upload_dir, $allowed_mimes, $allowed_ext, $prefix) {
+    private static function uploadFile($file, $upload_dir, $allowed_mimes, $allowed_ext, $prefix, $type) {
+        // ✅ FIX: Validate upload_dir is defined
+        if (!$upload_dir) {
+            return ['success' => false, 'message' => 'Upload path not configured'];
+        }
+        
         // Validate input
         if (empty($file) || !isset($file['tmp_name'])) {
             return ['success' => false, 'message' => 'File tidak ditemukan'];
@@ -90,10 +100,14 @@ class UploadHandler {
             return ['success' => false, 'message' => 'MIME type file tidak valid'];
         }
         
-        // Create upload directory if not exists
+        // ✅ FIX: Create upload directory if not exists - using absolute path
         if (!is_dir($upload_dir)) {
-            if (!mkdir($upload_dir, 0755, true)) {
-                return ['success' => false, 'message' => 'Gagal membuat direktori upload'];
+            // Create with recursive true to handle parent directories
+            if (!@mkdir($upload_dir, 0755, true)) {
+                // Check if directory exists (race condition)
+                if (!is_dir($upload_dir)) {
+                    return ['success' => false, 'message' => 'Gagal membuat direktori upload: ' . $upload_dir];
+                }
             }
         }
         
@@ -101,15 +115,24 @@ class UploadHandler {
         $timestamp = time();
         $random = bin2hex(random_bytes(4));
         $filename = $prefix . '_' . $timestamp . '_' . $random . '.' . $ext;
-        $filepath = $upload_dir . $filename;
+        $filepath = $upload_dir . '/' . $filename;
+        
+        // ✅ Debug: Log the actual path being used
+        error_log('Upload Handler - Type: ' . $type . ', Dir: ' . $upload_dir . ', File: ' . $filepath);
         
         // Move file
-        if (!move_uploaded_file($file['tmp_name'], $filepath)) {
-            return ['success' => false, 'message' => 'Gagal mengupload file'];
+        if (!@move_uploaded_file($file['tmp_name'], $filepath)) {
+            error_log('Move uploaded file failed: ' . $filepath);
+            return ['success' => false, 'message' => 'Gagal mengupload file ke: ' . $filepath];
         }
         
         // Set proper permissions
-        chmod($filepath, 0644);
+        @chmod($filepath, 0644);
+        
+        // Verify file exists after upload
+        if (!file_exists($filepath)) {
+            return ['success' => false, 'message' => 'File upload verified failed'];
+        }
         
         return [
             'success' => true,
@@ -127,8 +150,8 @@ class UploadHandler {
      * @return array ['success' => bool, 'message' => string]
      */
     public static function deleteFile($filename, $type = 'produk') {
-        $upload_dir = ($type === 'pembayaran') ? self::UPLOAD_DIR_PEMBAYARAN : self::UPLOAD_DIR_PRODUK;
-        $filepath = $upload_dir . $filename;
+        $upload_dir = ($type === 'pembayaran') ? UPLOADS_PEMBAYARAN_PATH : UPLOADS_PRODUK_PATH;
+        $filepath = $upload_dir . '/' . $filename;
         
         // Security check - prevent directory traversal
         $filepath = realpath($filepath);
@@ -158,7 +181,7 @@ class UploadHandler {
      * @return string File URL
      */
     public static function getFileUrl($filename, $type = 'produk') {
-        // Use constants from config.php if available
+        // ✅ Use constants from config.php if available
         if (defined('UPLOADS_PRODUK_URL') && $type === 'produk') {
             return UPLOADS_PRODUK_URL . $filename;
             // Returns: http://localhost/MobileNest/admin/uploads/produk/produk_123.jpg
