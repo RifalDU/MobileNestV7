@@ -31,8 +31,18 @@ if (!$transaksi) {
     exit();
 }
 
-// Fetch transaction items
-$query = "SELECT * FROM detail_transaksi WHERE id_transaksi = ?";
+// ✅ FIX: Fetch transaction items with JOIN to produk for images
+$query = "SELECT 
+            dt.id_detail,
+            dt.id_produk,
+            dt.nama_produk,
+            dt.harga_satuan,
+            dt.jumlah,
+            dt.subtotal,
+            p.gambar_produk
+            FROM detail_transaksi dt
+            LEFT JOIN produk p ON dt.id_produk = p.id_produk
+            WHERE dt.id_transaksi = ?";
 $stmt = $conn->prepare($query);
 $stmt->bind_param('i', $id_transaksi);
 $stmt->execute();
@@ -240,6 +250,54 @@ include '../includes/header.php';
         color: var(--primary-color);
     }
 
+    /* Product Item */
+    .product-item {
+        display: flex;
+        gap: 15px;
+        align-items: flex-start;
+        padding: 15px;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        margin-bottom: 12px;
+    }
+
+    .product-item-image {
+        width: 100px;
+        height: 100px;
+        border-radius: 8px;
+        object-fit: cover;
+        background: #f0f0f0;
+        flex-shrink: 0;
+    }
+
+    .product-item-info {
+        flex: 1;
+    }
+
+    .product-item-name {
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 8px;
+    }
+
+    .product-item-price {
+        font-size: 14px;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+    }
+
+    .product-item-qty {
+        font-size: 14px;
+        color: var(--text-secondary);
+    }
+
+    .product-item-subtotal {
+        font-weight: 700;
+        color: var(--primary-color);
+        text-align: right;
+        min-width: 100px;
+    }
+
     .item-row {
         display: flex;
         justify-content: space-between;
@@ -345,6 +403,20 @@ include '../includes/header.php';
         .success-title {
             font-size: 22px;
         }
+
+        .product-item {
+            flex-direction: column;
+        }
+
+        .product-item-image {
+            width: 100%;
+            height: 150px;
+        }
+
+        .product-item-subtotal {
+            text-align: left;
+            min-width: auto;
+        }
     }
 </style>
 
@@ -396,26 +468,21 @@ include '../includes/header.php';
                     <i class="bi bi-box"></i>
                     Produk Pesanan Anda
                 </div>
-                <table class="w-100" style="border-collapse: collapse;">
-                    <thead>
-                        <tr style="border-bottom: 2px solid var(--border-color);">
-                            <th style="text-align: left; padding: 12px 0; color: var(--text-secondary); font-size: 13px; font-weight: 600;">Produk</th>
-                            <th style="text-align: center; padding: 12px 0; color: var(--text-secondary); font-size: 13px; font-weight: 600; width: 80px;">Qty</th>
-                            <th style="text-align: right; padding: 12px 0; color: var(--text-secondary); font-size: 13px; font-weight: 600; width: 120px;">Harga</th>
-                            <th style="text-align: right; padding: 12px 0; color: var(--text-secondary); font-size: 13px; font-weight: 600; width: 120px;">Subtotal</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($items as $item): ?>
-                            <tr style="border-bottom: 1px solid var(--border-color);">
-                                <td style="padding: 16px 0; color: var(--text-primary); font-weight: 500;"><?php echo htmlspecialchars($item['nama_produk'] ?? 'Produk'); ?></td>
-                                <td style="text-align: center; padding: 16px 0; color: var(--text-primary);"><?php echo intval($item['jumlah']); ?></td>
-                                <td style="text-align: right; padding: 16px 0; color: var(--text-secondary);">Rp <?php echo number_format(intval($item['harga_satuan']), 0, ',', '.'); ?></td>
-                                <td style="text-align: right; padding: 16px 0; color: var(--primary-color); font-weight: 700;">Rp <?php echo number_format(intval($item['subtotal']), 0, ',', '.'); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                <?php foreach ($items as $item): 
+                    $gambar = !empty($item['gambar_produk']) 
+                        ? '../assets/images/produk/' . htmlspecialchars($item['gambar_produk'])
+                        : '../assets/images/placeholder.png';
+                ?>
+                <div class="product-item">
+                    <img src="<?php echo $gambar; ?>" alt="<?php echo htmlspecialchars($item['nama_produk']); ?>" class="product-item-image" onerror="this.src='../assets/images/placeholder.png';">
+                    <div class="product-item-info">
+                        <div class="product-item-name"><?php echo htmlspecialchars($item['nama_produk'] ?? 'Produk'); ?></div>
+                        <div class="product-item-price">Rp <?php echo number_format(intval($item['harga_satuan']), 0, ',', '.'); ?></div>
+                        <div class="product-item-qty">Jumlah: <?php echo intval($item['jumlah']); ?> pcs</div>
+                    </div>
+                    <div class="product-item-subtotal">Rp <?php echo number_format(intval($item['subtotal']), 0, ',', '.'); ?></div>
+                </div>
+                <?php endforeach; ?>
             </div>
 
             <!-- Shipping Details -->
