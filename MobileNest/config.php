@@ -50,6 +50,12 @@ define('SITE_URL', 'http://localhost/MobileNest');
 define('ADMIN_PATH', __DIR__ . '/admin');
 define('UPLOADS_PATH', __DIR__ . '/uploads');
 
+// ===== UPLOAD URLs =====
+define('UPLOADS_PRODUK_PATH', __DIR__ . '/uploads/produk');
+define('UPLOADS_PEMBAYARAN_PATH', __DIR__ . '/uploads/pembayaran');
+define('UPLOADS_PRODUK_URL', SITE_URL . '/uploads/produk/');
+define('UPLOADS_PEMBAYARAN_URL', SITE_URL . '/uploads/pembayaran/');
+
 
 // ===== HELPER FUNCTIONS =====
 
