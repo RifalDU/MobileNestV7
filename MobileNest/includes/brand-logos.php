@@ -28,7 +28,7 @@ $brand_logos = [
     ],
     'Realme' => [
         // ✅ USE LOCAL LOGO (no background version)
-        'image_url' => 'assets/images/realme-logo-removebg-preview.jpg',
+        'image_url' => 'assets/images/realme-logo.jpg',
         'alt' => 'Realme Logo',
         'fallback_urls' => [
             // Fallback to generic smartphone icon if local fails
