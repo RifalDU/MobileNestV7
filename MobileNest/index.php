@@ -11,14 +11,23 @@ function getImageUrl($gambar_field) {
         return '';
     }
     
-    // Check if it's a filename (local upload) or URL
-    if (strpos($gambar_field, 'http') === false && strpos($gambar_field, '/') === false) {
-        // It's a filename - use UploadHandler to build URL
-        return UploadHandler::getFileUrl($gambar_field, 'produk');
-    } else {
-        // It's already a URL
+    // Check if it's a full URL already (http/https)
+    if (strpos($gambar_field, 'http://') === 0 || strpos($gambar_field, 'https://') === 0) {
         return $gambar_field;
     }
+    
+    // Check if it's a filename (local upload)
+    if (strpos($gambar_field, '/') === false) {
+        // It's a filename - use constant URL
+        if (defined('UPLOADS_PRODUK_URL')) {
+            return UPLOADS_PRODUK_URL . $gambar_field;
+        }
+        // Fallback if constant not defined
+        return 'uploads/produk/' . $gambar_field;
+    }
+    
+    // It's already a partial path, add base URL
+    return SITE_URL . '/' . $gambar_field;
 }
 ?>
 
@@ -201,7 +210,7 @@ function getImageUrl($gambar_field) {
                     <span class="product-badge <?php echo $badge_classes[$badge_index]; ?>"><?php echo $badges[$badge_index]; ?></span>
                     <?php endif; ?>
                     <?php if (!empty($img_src)): ?>
-                    <img src="<?php echo htmlspecialchars($img_src); ?>" class="card-img-top" alt="<?php echo htmlspecialchars($row['nama_produk']); ?>">
+                    <img src="<?php echo htmlspecialchars($img_src); ?>" class="card-img-top" alt="<?php echo htmlspecialchars($row['nama_produk']); ?>" loading="lazy">
                     <?php else: ?>
                     <div class="card-img-top d-flex align-items-center justify-content-center bg-light" style="height: 220px;">
                         <i class="bi bi-phone" style="font-size: 3rem; color: #ccc;"></i>
