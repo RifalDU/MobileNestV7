@@ -34,8 +34,18 @@ if (!$transaksi) {
     exit();
 }
 
-// Fetch transaction items
-$query = "SELECT * FROM detail_transaksi WHERE id_transaksi = ?";
+// ✅ FIX: Fetch transaction items WITH JOIN to produk for images
+$query = "SELECT 
+            dt.id_detail,
+            dt.id_produk,
+            dt.nama_produk,
+            dt.harga_satuan,
+            dt.jumlah,
+            dt.subtotal,
+            p.gambar_produk
+            FROM detail_transaksi dt
+            LEFT JOIN produk p ON dt.id_produk = p.id_produk
+            WHERE dt.id_transaksi = ?";
 $stmt = $conn->prepare($query);
 $stmt->bind_param('i', $id_transaksi);
 $stmt->execute();
@@ -230,53 +240,52 @@ include '../includes/header.php';
         font-weight: 600;
     }
 
-    /* Table */
-    .table-custom {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 0;
+    /* Product Item */
+    .product-item {
+        display: flex;
+        gap: 15px;
+        align-items: flex-start;
+        padding: 15px;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        margin-bottom: 12px;
     }
 
-    .table-custom thead {
-        background: #f8f9fa;
-        border-bottom: 2px solid var(--border-color);
+    .product-item-image {
+        width: 100px;
+        height: 100px;
+        border-radius: 8px;
+        object-fit: cover;
+        background: #f0f0f0;
+        flex-shrink: 0;
     }
 
-    .table-custom th {
-        padding: 14px;
-        text-align: left;
-        font-size: 13px;
+    .product-item-info {
+        flex: 1;
+    }
+
+    .product-item-name {
         font-weight: 600;
-        color: var(--text-secondary);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-
-    .table-custom td {
-        padding: 16px 14px;
-        border-bottom: 1px solid var(--border-color);
         color: var(--text-primary);
+        margin-bottom: 8px;
+    }
+
+    .product-item-price {
         font-size: 14px;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
     }
 
-    .table-custom tbody tr:last-child td {
-        border-bottom: none;
+    .product-item-qty {
+        font-size: 14px;
+        color: var(--text-secondary);
     }
 
-    .text-right {
-        text-align: right;
-    }
-
-    .text-center {
-        text-align: center;
-    }
-
-    .font-bold {
+    .product-item-subtotal {
         font-weight: 700;
-    }
-
-    .text-primary {
         color: var(--primary-color);
+        text-align: right;
+        min-width: 100px;
     }
 
     /* Summary Card */
@@ -391,12 +400,6 @@ include '../includes/header.php';
         .btn-action {
             width: 100% !important;
         }
-
-        .table-custom th,
-        .table-custom td {
-            padding: 10px;
-            font-size: 12px;
-        }
     }
 </style>
 
@@ -458,28 +461,21 @@ include '../includes/header.php';
                     <i class="bi bi-box"></i>
                     Daftar Produk
                 </div>
-                <div style="overflow-x: auto;">
-                    <table class="table-custom">
-                        <thead>
-                            <tr>
-                                <th>Produk</th>
-                                <th class="text-center">Qty</th>
-                                <th class="text-right">Harga Satuan</th>
-                                <th class="text-right">Subtotal</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($items as $item): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($item['nama_produk'] ?? 'Produk'); ?></td>
-                                    <td class="text-center"><?php echo intval($item['jumlah']); ?> pcs</td>
-                                    <td class="text-right">Rp <?php echo number_format(intval($item['harga_satuan']), 0, ',', '.'); ?></td>
-                                    <td class="text-right font-bold text-primary">Rp <?php echo number_format(intval($item['subtotal']), 0, ',', '.'); ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                <?php foreach ($items as $item): 
+                    $gambar = !empty($item['gambar_produk']) 
+                        ? '../assets/images/produk/' . htmlspecialchars($item['gambar_produk'])
+                        : '../assets/images/placeholder.png';
+                ?>
+                <div class="product-item">
+                    <img src="<?php echo $gambar; ?>" alt="<?php echo htmlspecialchars($item['nama_produk']); ?>" class="product-item-image" onerror="this.src='../assets/images/placeholder.png';">
+                    <div class="product-item-info">
+                        <div class="product-item-name"><?php echo htmlspecialchars($item['nama_produk'] ?? 'Produk'); ?></div>
+                        <div class="product-item-price">Rp <?php echo number_format(intval($item['harga_satuan']), 0, ',', '.'); ?></div>
+                        <div class="product-item-qty">Jumlah: <?php echo intval($item['jumlah']); ?> pcs</div>
+                    </div>
+                    <div class="product-item-subtotal">Rp <?php echo number_format(intval($item['subtotal']), 0, ',', '.'); ?></div>
                 </div>
+                <?php endforeach; ?>
             </div>
 
             <!-- Shipping Section -->
@@ -550,7 +546,7 @@ include '../includes/header.php';
                 </div>
 
                 <div class="button-group">
-                    <button class="btn-action btn-secondary" onclick="history.back()">← Kembali</button>
+                    <button type="button" class="btn-action btn-secondary" onclick="history.back()">← Kembali</button>
                     <!-- ✅ FIX: Pass id_transaksi in URL AND use session as fallback -->
                     <a href="pembayaran.php?id=<?php echo $id_transaksi; ?>" class="btn-action btn-primary">Lanjut Pembayaran →</a>
                 </div>
