@@ -5,9 +5,6 @@
  * Local fallbacks for unreliable CDN sources
  */
 
-// Get SITE_URL from config if available
-$realme_logo_url = (defined('SITE_URL') ? SITE_URL : '') . '/assets/images/realme-logo.jpg';
-
 $brand_logos = [
     'Apple' => [
         'image_url' => 'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/apple.svg',
@@ -30,13 +27,11 @@ $brand_logos = [
         'alt' => 'Vivo Logo'
     ],
     'Realme' => [
-        // ✅ USE LOCAL LOGO with absolute path + fallback to CDN
-        'image_url' => $realme_logo_url,
+        // ✅ USE GITHUB CDN - reliable and always available
+        'image_url' => 'https://raw.githubusercontent.com/RifalDU/MobileNestV7/main/MobileNest/assets/images/realme-logo.jpg',
         'alt' => 'Realme Logo',
         'fallback_urls' => [
-            // If local file not found, try GitHub raw CDN
-            'https://raw.githubusercontent.com/RifalDU/MobileNestV7/main/MobileNest/assets/images/realme-logo.jpg',
-            // Then fallback to generic smartphone icon
+            // Fallback to generic smartphone icon if GitHub CDN fails
             'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/smartphone.svg'
         ]
     ]
