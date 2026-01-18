@@ -3,7 +3,8 @@
  * FILE: filter.js
  * PURPOSE: Handle product filtering
  * MODE: HYBRID (PHP initial render + AJAX filter)
- * FIX: Correct image URL building for local uploads
+ * FIX: Handle both base64 images and file paths
+ * FIX: Remove cart button when filtering (only "Lihat Detail")
  * ============================================
  */
 
@@ -12,22 +13,25 @@ let searchDebounceTimer = null;
 
 /**
  * Build image URL for product images from API
- * Handles both local filenames and external URLs
+ * Handles both base64 data URLs and local filenames
  */
 function buildImageUrl(gambar) {
     if (!gambar) {
         return '';
     }
     
-    // Check if it's a filename (local upload) or URL
-    if (!gambar.includes('http') && !gambar.includes('/')) {
-        // It's a filename - build direct path to uploads folder
-        // Format: /MobileNest/uploads/produk/filename.jpg
+    // If it's already a data URL or full URL, return as-is
+    if (gambar.includes('data:image') || gambar.includes('http')) {
+        return gambar;
+    }
+    
+    // If it's a filename, build direct path to uploads folder
+    if (!gambar.includes('/')) {
         const baseUrl = window.location.origin;
         return baseUrl + '/MobileNest/uploads/produk/' + encodeURIComponent(gambar);
     }
     
-    // It's already a URL or path
+    // Return as-is if it's already a path
     return gambar;
 }
 
@@ -180,6 +184,7 @@ function showLoadingState() {
 
 /**
  * Render products from API response
+ * FILTER MODE: Only shows "Lihat Detail" button, no cart button
  */
 function renderProducts(products) {
     const container = document.getElementById('products_container');
@@ -210,13 +215,12 @@ function renderProducts(products) {
         const imageUrl = buildImageUrl(product.gambar);
         console.log('Product:', product.nama_produk, '- gambar:', product.gambar, '- URL:', imageUrl);
         return `
-        <div class="product-card">
+        <div class="product-card" data-product-id="${product.id_produk}">
             <div class="card border-0 shadow-sm h-100 transition">
                 <!-- Product Image -->
                 <div class="card-img-top bg-light d-flex align-items-center justify-content-center" style="height: 200px; position: relative; overflow: hidden;">
                     ${imageUrl ? `
-                        <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.nama_produk)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                        <i class="bi bi-phone" style="font-size: 3rem; color: #ccc; display: none; align-items: center; justify-content: center;"></i>
+                        <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.nama_produk)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="console.error('Image failed to load:', this.src);">
                     ` : `
                         <i class="bi bi-phone" style="font-size: 3rem; color: #ccc;"></i>
                     `}
@@ -244,14 +248,11 @@ function renderProducts(products) {
                     <!-- Price -->
                     <h5 class="text-primary mb-3">Rp ${formatPrice(product.harga)}</h5>
                     
-                    <!-- Buttons -->
+                    <!-- Button: ONLY Lihat Detail (no cart button in filter results) -->
                     <div class="d-grid gap-2">
-                        <a href="detail-produk.php?id=${product.id_produk}" class="btn btn-outline-primary btn-sm">
+                        <a href="detail-produk.php?id=${product.id_produk}" class="btn btn-primary btn-sm">
                             <i class="bi bi-search"></i> Lihat Detail
                         </a>
-                        <button type="button" class="btn btn-primary btn-sm" onclick="addToCart(${product.id_produk}, 1)">
-                            <i class="bi bi-cart-plus"></i> Keranjang
-                        </button>
                     </div>
                 </div>
             </div>
