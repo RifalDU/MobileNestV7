@@ -27,8 +27,8 @@ $brand_logos = [
         'alt' => 'Vivo Logo'
     ],
     'Realme' => [
-        // ✅ USE LOCAL LOGO (reliable)
-        'image_url' => '../assets/images/realme-logo.jpg',
+        // ✅ USE LOCAL LOGO (reliable) - Fixed path to work from any subdirectory
+        'image_url' => 'assets/images/realme-logo.jpg',
         'alt' => 'Realme Logo',
         'fallback_urls' => [
             // Fallback to generic smartphone icon if local fails
