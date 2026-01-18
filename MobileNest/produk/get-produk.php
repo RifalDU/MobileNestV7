@@ -1,4 +1,12 @@
 <?php
+/**
+ * ============================================
+ * FILE: get-produk.php
+ * PURPOSE: Get filtered products from database
+ * ENHANCEMENT: Include both file path and base64 image data
+ * ============================================
+ */
+
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
@@ -41,7 +49,7 @@ try {
     
     error_log('WHERE clause: ' . $where_clause);
 
-    // Build ORDER BY clause - simple, without optional columns
+    // Build ORDER BY clause
     $order_by = "id_produk DESC"; // Default simple sort
 
     switch($sort) {
@@ -52,19 +60,16 @@ try {
             $order_by = "harga DESC";
             break;
         case 'populer':
-            // If terjual column exists, use it; otherwise sort by id
             $order_by = "id_produk DESC";
             break;
         case 'terbaru':
         default:
-            // If tanggal_ditambahkan exists, use it; otherwise use id
             $order_by = "id_produk DESC";
     }
 
     error_log('ORDER BY: ' . $order_by);
 
     // SELECT only columns that definitely exist
-    // Safe columns: id_produk, nama_produk, merek, harga, stok, status_produk, kategori, gambar
     $sql = "SELECT id_produk, nama_produk, merek, harga, stok, kategori, status_produk, gambar 
             FROM produk 
             WHERE $where_clause 
@@ -98,6 +103,9 @@ try {
         // Add optional fields with defaults
         $row['terjual'] = 0;
         $row['rating'] = 4.5;
+        
+        // **NEW: Keep gambar as-is (could be base64 or filename)**
+        // filter.js will handle both cases
         
         $products[] = $row;
     }
