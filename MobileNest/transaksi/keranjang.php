@@ -1,268 +1,451 @@
 <?php
-session_start();
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+if (session_status() === PHP_SESSION_NONE) session_start();
 require_once '../config.php';
-$page_title = "Keranjang & Checkout";
+require_once '../includes/auth-check.php';
+require_user_login();
+
+$page_title = "Keranjang Belanja";
+
+$user_id = $_SESSION['user_id'] ?? $_SESSION['user'] ?? 0;
+
+if ($user_id === 0) {
+    header('Location: ../login.php');
+    exit();
+}
+
+$cart_items = [];
+$error_message = '';
+
+// Get all cart items - JOIN dengan produk untuk ambil gambar
+try {
+    $sql = "SELECT 
+                c.id_keranjang,
+                c.id_produk,
+                c.jumlah,
+                c.added_at,
+                p.nama_produk,
+                p.harga,
+                p.gambar_produk,
+                p.stok,
+                (c.jumlah * p.harga) as subtotal
+            FROM keranjang c
+            JOIN produk p ON c.id_produk = p.id_produk
+            WHERE c.id_user = ?
+            ORDER BY c.added_at DESC";
+    
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+        throw new Exception("Prepare failed: " . $conn->error);
+    }
+    
+    $stmt->bind_param('i', $user_id);
+    
+    if (!$stmt->execute()) {
+        throw new Exception("Execute failed: " . $stmt->error);
+    }
+    
+    $result = $stmt->get_result();
+    $cart_items = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    
+} catch (Exception $e) {
+    error_log("Keranjang query error: " . $e->getMessage());
+    $error_message = "Gagal memuat keranjang. Silakan coba lagi.";
+}
+
 include '../includes/header.php';
 ?>
 
 <style>
-.checkout-steps {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 40px;
-    position: relative;
+body { background: #f5f7fa; }
+.cart-container {
+    max-width: 1200px;
+    margin: 0 auto;
 }
-.checkout-steps::before {
-    content: '';
-    position: absolute;
-    top: 20px;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: #e0e0e0;
-    z-index: 0;
-}
-.step {
-    text-align: center;
-    flex: 1;
-    position: relative;
-    z-index: 1;
-}
-.step-circle {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: #e0e0e0;
-    color: #999;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 600;
-    margin-bottom: 8px;
-}
-.step.active .step-circle {
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
-}
-.step.active .step-label {
-    color: #667eea;
-    font-weight: 600;
-}
-.step-label {
-    font-size: 14px;
-    color: #999;
-}
+
+/* Cart Items */
 .cart-item {
     background: white;
-    border-radius: 15px;
+    border-radius: 12px;
     padding: 20px;
     margin-bottom: 15px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
     display: flex;
     gap: 20px;
-    align-items: center;
+    align-items: flex-start;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
 }
-.cart-item img {
-    width: 100px;
-    height: 100px;
-    object-fit: contain;
+
+.cart-item:hover {
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+}
+
+.product-image {
+    width: 120px;
+    height: 120px;
     border-radius: 10px;
+    object-fit: cover;
+    background: #f0f0f0;
+    flex-shrink: 0;
 }
-.cart-item-info {
+
+.product-details {
     flex: 1;
 }
-.cart-item-title {
-    font-weight: 600;
+
+.product-name {
     font-size: 16px;
-    margin-bottom: 5px;
+    font-weight: 600;
     color: #2c3e50;
+    margin-bottom: 8px;
 }
-.cart-item-price {
+
+.product-price {
+    font-size: 14px;
     color: #667eea;
     font-weight: 600;
-    font-size: 14px;
+    margin-bottom: 15px;
 }
+
 .quantity-control {
     display: flex;
     align-items: center;
     gap: 10px;
+    width: fit-content;
 }
-.quantity-control button {
+
+.qty-btn {
     width: 30px;
     height: 30px;
-    border: 1px solid #ddd;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
     background: white;
-    border-radius: 5px;
-    font-weight: 600;
+    color: #2c3e50;
     cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s ease;
 }
-.quantity-control input {
-    width: 50px;
+
+.qty-btn:hover {
+    background: #667eea;
+    color: white;
+    border-color: #667eea;
+}
+
+.qty-input {
+    width: 60px;
+    height: 30px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
     text-align: center;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    padding: 5px;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 0;
 }
-.voucher-box {
-    background: #f8f9fa;
-    border-radius: 10px;
-    padding: 15px;
-    margin: 20px 0;
-}
-.voucher-input-group {
+
+.product-actions {
     display: flex;
     gap: 10px;
 }
-.voucher-input-group input {
-    flex: 1;
-    padding: 10px 15px;
-    border: 2px solid #ddd;
-    border-radius: 8px;
-}
-.voucher-input-group button {
-    padding: 10px 25px;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
+
+.btn-small {
+    padding: 8px 12px;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
+    font-size: 12px;
     font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
 }
+
+.btn-remove {
+    background: #f8d7da;
+    color: #842029;
+}
+
+.btn-remove:hover {
+    background: #f5c6cb;
+}
+
+.subtotal {
+    font-size: 16px;
+    font-weight: 700;
+    color: #667eea;
+    min-width: 120px;
+    text-align: right;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 80px 20px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.empty-state-icon {
+    font-size: 100px;
+    color: #e0e0e0;
+    margin-bottom: 20px;
+}
+
+.empty-state h3 {
+    color: #2c3e50;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
+.empty-state p {
+    color: #7f8c8d;
+    margin-bottom: 30px;
+}
+
+/* Summary */
 .summary-card {
     background: white;
-    border-radius: 15px;
+    border-radius: 12px;
     padding: 25px;
-    box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     position: sticky;
     top: 100px;
 }
+
 .summary-row {
     display: flex;
     justify-content: space-between;
     padding: 12px 0;
-    border-bottom: 1px solid #f0f0f0;
-}
-.summary-row.total {
-    border-bottom: none;
-    font-size: 20px;
-    font-weight: 700;
-    color: #2c3e50;
-    margin-top: 10px;
-}
-.btn-checkout {
-    width: 100%;
-    padding: 15px;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    border: none;
-    border-radius: 10px;
-    color: white;
-    font-weight: 600;
-    font-size: 16px;
-    margin-top: 20px;
-}
-.btn-remove {
-    color: #e74c3c;
-    background: none;
-    border: none;
-    cursor: pointer;
+    border-bottom: 1px solid #e0e0e0;
     font-size: 14px;
 }
-.empty-cart-message {
-    background: linear-gradient(135deg, #e8f0fe 0%, #f3e5f5 100%);
-    border-radius: 15px;
-    padding: 60px 20px;
-    text-align: center;
-    margin-bottom: 30px;
-}
-.empty-cart-message i {
-    font-size: 3rem;
+
+.summary-row.total {
+    border-top: 2px solid #e0e0e0;
+    border-bottom: none;
+    padding-top: 12px;
+    font-size: 18px;
+    font-weight: 700;
     color: #667eea;
-    margin-bottom: 20px;
 }
-.empty-cart-message h4 {
-    color: #2c3e50;
-    margin: 20px 0 10px;
+
+.btn-checkout {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 16px;
+    cursor: pointer;
+    margin-top: 20px;
+    transition: all 0.3s ease;
 }
-.empty-cart-message p {
-    color: #7f8c8d;
-    margin-bottom: 20px;
+
+.btn-checkout:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+}
+
+.btn-checkout:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-shop {
+    padding: 12px 24px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-block;
+    transition: all 0.3s ease;
+}
+
+.btn-shop:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+    color: white;
+}
+
+@media (max-width: 768px) {
+    .cart-item {
+        flex-direction: column;
+    }
+
+    .product-image {
+        width: 100%;
+        height: 200px;
+    }
+
+    .subtotal {
+        text-align: left;
+        min-width: auto;
+    }
 }
 </style>
 
 <div class="container py-5">
-    <!-- Progress Steps -->
-    <div class="checkout-steps">
-        <div class="step active">
-            <div class="step-circle">1</div>
-            <div class="step-label">Keranjang</div>
-        </div>
-        <div class="step">
-            <div class="step-circle">2</div>
-            <div class="step-label">Pengiriman</div>
-        </div>
-        <div class="step">
-            <div class="step-circle">3</div>
-            <div class="step-label">Pembayaran</div>
-        </div>
-        <div class="step">
-            <div class="step-circle">4</div>
-            <div class="step-label">Selesai</div>
-        </div>
-    </div>
+    <div class="cart-container">
+        <h1 class="mb-4" style="font-weight: 700; color: #2c3e50;">
+            <i class="bi bi-cart3"></i> Keranjang Belanja
+        </h1>
 
-    <div class="row">
-        <div class="col-lg-8">
-            <!-- Cart Items Container (populated by JS) -->
-            <div id="cart-items-container">
-                <!-- Loading indicator -->
-                <div class="text-center py-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
+        <?php if (!empty($error_message)): ?>
+            <div class="alert alert-danger" role="alert">
+                <?php echo htmlspecialchars($error_message); ?>
+            </div>
+        <?php endif; ?>
+
+        <div class="row">
+            <div class="col-lg-8">
+                <?php if (count($cart_items) > 0): ?>
+                    <?php foreach ($cart_items as $item): 
+                        $gambar = !empty($item['gambar_produk']) 
+                            ? '../assets/images/produk/' . htmlspecialchars($item['gambar_produk'])
+                            : '../assets/images/placeholder.png';
+                        $id_keranjang = $item['id_keranjang'];
+                    ?>
+                    <div class="cart-item">
+                        <!-- Product Image -->
+                        <img src="<?php echo $gambar; ?>" alt="<?php echo htmlspecialchars($item['nama_produk']); ?>" class="product-image" onerror="this.src='../assets/images/placeholder.png';">
+                        
+                        <!-- Product Details -->
+                        <div class="product-details">
+                            <div class="product-name"><?php echo htmlspecialchars($item['nama_produk']); ?></div>
+                            <div class="product-price">Rp <?php echo number_format(intval($item['harga']), 0, ',', '.'); ?></div>
+                            
+                            <div style="margin-bottom: 15px;">
+                                <div style="font-size: 12px; color: #7f8c8d; margin-bottom: 8px;">Stok tersedia: <strong><?php echo intval($item['stok']); ?></strong></div>
+                                <div class="quantity-control">
+                                    <button class="qty-btn" onclick="changeQuantity(<?php echo $id_keranjang; ?>, -1)">−</button>
+                                    <input type="number" class="qty-input" id="qty_<?php echo $id_keranjang; ?>" value="<?php echo intval($item['jumlah']); ?>" min="1" max="<?php echo intval($item['stok']); ?>" onchange="changeQuantity(<?php echo $id_keranjang; ?>, 0)">
+                                    <button class="qty-btn" onclick="changeQuantity(<?php echo $id_keranjang; ?>, 1)">+</button>
+                                </div>
+                            </div>
+                            
+                            <div class="product-actions">
+                                <button class="btn-small btn-remove" onclick="removeFromCart(<?php echo $id_keranjang; ?>)">
+                                    <i class="bi bi-trash"></i> Hapus
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Subtotal -->
+                        <div class="subtotal">
+                            <div style="font-size: 12px; color: #7f8c8d; margin-bottom: 5px;">Subtotal</div>
+                            Rp <?php echo number_format(intval($item['subtotal']), 0, ',', '.'); ?>
+                        </div>
                     </div>
-                </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <!-- Empty State -->
+                    <div class="empty-state">
+                        <div class="empty-state-icon">
+                            <i class="bi bi-bag-x"></i>
+                        </div>
+                        <h3>Keranjang Belanja Kosong</h3>
+                        <p>Belum ada produk di keranjang Anda.</p>
+                        <a href="../produk/list-produk.php" class="btn-shop">
+                            <i class="bi bi-shop"></i> Mulai Belanja
+                        </a>
+                    </div>
+                <?php endif; ?>
             </div>
 
-            <!-- Voucher Box -->
-            <div class="voucher-box" id="voucher-section" style="display: none;">
-                <label class="fw-bold mb-2">Kode Voucher</label>
-                <small class="text-muted d-block mb-2">(contoh: MOBILENEST10)</small>
-                <div class="voucher-input-group">
-                    <input type="text" placeholder="Masukkan kode voucher" id="voucher-input">
-                    <button id="apply-voucher">Apply</button>
+            <!-- Sidebar - Summary -->
+            <?php if (count($cart_items) > 0): ?>
+            <div class="col-lg-4">
+                <div class="summary-card">
+                    <h5 style="font-weight: 700; margin-bottom: 20px;">Ringkasan Pesanan</h5>
+                    
+                    <?php 
+                    $total_items = 0;
+                    $total_price = 0;
+                    foreach ($cart_items as $item) {
+                        $total_items += intval($item['jumlah']);
+                        $total_price += intval($item['subtotal']);
+                    }
+                    ?>
+                    
+                    <div class="summary-row">
+                        <span>Total Produk</span>
+                        <span><?php echo $total_items; ?> pcs</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Jumlah Item</span>
+                        <span><?php echo count($cart_items); ?></span>
+                    </div>
+                    
+                    <div class="summary-row total">
+                        <span>Total Belanja</span>
+                        <span>Rp <?php echo number_format($total_price, 0, ',', '.'); ?></span>
+                    </div>
+                    
+                    <form action="checkout.php" method="POST">
+                        <button type="submit" class="btn-checkout">
+                            <i class="bi bi-arrow-right"></i> Lanjut ke Pengiriman
+                        </button>
+                    </form>
                 </div>
             </div>
-        </div>
-
-        <div class="col-lg-4">
-            <!-- Summary Card -->
-            <div class="summary-card" id="cart-summary" style="display: none;">
-                <h5 class="fw-bold mb-4">Ringkasan Belanja</h5>
-                <div class="summary-row">
-                    <span>Total Produk</span>
-                    <span class="fw-bold" id="total-items">0</span>
-                </div>
-                <div class="summary-row">
-                    <span>Subtotal</span>
-                    <span class="fw-bold" id="subtotal">Rp 0</span>
-                </div>
-                <div class="summary-row">
-                    <span>Diskon</span>
-                    <span class="fw-bold text-success" id="discount">-Rp 0</span>
-                </div>
-                <div class="summary-row">
-                    <span>Ongkir</span>
-                    <span class="fw-bold" id="shipping">Rp 20.000</span>
-                </div>
-                <div class="summary-row total">
-                    <span>Total</span>
-                    <span style="color: #667eea;" id="total-price">Rp 0</span>
-                </div>
-                <button class="btn-checkout" onclick="window.location.href='pengiriman.php'">Lanjut ke Pengiriman <i class="bi bi-arrow-right"></i></button>
-            </div>
+            <?php endif; ?>
         </div>
     </div>
 </div>
 
-<script src="../assets/js/api-handler.js"></script>
-<script src="../assets/js/cart.js"></script>
+<script>
+function changeQuantity(id, delta) {
+    const input = document.getElementById('qty_' + id);
+    let newQty = parseInt(input.value) + delta;
+    const maxStok = parseInt(input.max);
+    
+    if (newQty < 1) newQty = 1;
+    if (newQty > maxStok) newQty = maxStok;
+    
+    input.value = newQty;
+    updateCart(id, newQty);
+}
+
+function updateCart(id, quantity) {
+    fetch('update-keranjang.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_keranjang: id, jumlah: quantity })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            alert('Error: ' + data.message);
+            location.reload();
+        } else {
+            location.reload();
+        }
+    });
+}
+
+function removeFromCart(id) {
+    if (confirm('Hapus produk dari keranjang?')) {
+        fetch('delete-keranjang.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_keranjang: id })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        });
+    }
+}
+</script>
 
 <?php include '../includes/footer.php'; ?>
