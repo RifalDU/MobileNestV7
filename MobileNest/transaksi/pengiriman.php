@@ -1,537 +1,512 @@
 <?php
-session_start();
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-// Check if user logged in
-if (!isset($_SESSION['user_id'])) {
+if (session_status() === PHP_SESSION_NONE) session_start();
+require_once '../config.php';
+require_once '../includes/auth-check.php';
+require_user_login();
+
+$page_title = "Pengiriman";
+
+$user_id = $_SESSION['user_id'] ?? $_SESSION['user'] ?? 0;
+
+if ($user_id === 0) {
     header('Location: ../login.php');
     exit();
 }
 
-require_once '../config.php';
-
-$user_id = $_SESSION['user_id'];
-
-$page_title = "Pengiriman & Checkout";
-include '../includes/header.php';
+// ✅ FIX: Get cart items with JOIN to produk for images
+$cart_items = [];
+$total_price = 0;
 
 try {
-    // Get user data
-    $query = "SELECT nama_lengkap, no_telepon, email FROM users WHERE id_user = ?";
-    $stmt = $conn->prepare($query);
-    if (!$stmt) {
-        throw new Exception('Prepare failed: ' . $conn->error);
-    }
+    $sql = "SELECT 
+                c.id_keranjang,
+                c.id_produk,
+                c.jumlah,
+                p.nama_produk,
+                p.harga,
+                p.gambar_produk,
+                (c.jumlah * p.harga) as subtotal
+            FROM keranjang c
+            JOIN produk p ON c.id_produk = p.id_produk
+            WHERE c.id_user = ?
+            ORDER BY c.added_at DESC";
+    
+    $stmt = $conn->prepare($sql);
     $stmt->bind_param('i', $user_id);
     $stmt->execute();
     $result = $stmt->get_result();
-    $user = $result->fetch_assoc();
+    $cart_items = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
     
-    if (!$user) {
-        $user = [
-            'nama_lengkap' => '',
-            'no_telepon' => '',
-            'email' => ''
-        ];
-    }
-
-    // Get cart items & calculate subtotal
-    $query_cart = "SELECT k.*, p.nama_produk, p.harga FROM keranjang k 
-                  JOIN produk p ON k.id_produk = p.id_produk 
-                  WHERE k.id_user = ?";
-    $stmt_cart = $conn->prepare($query_cart);
-    if (!$stmt_cart) {
-        throw new Exception('Prepare cart failed: ' . $conn->error);
-    }
-    $stmt_cart->bind_param('i', $user_id);
-    $stmt_cart->execute();
-    $cart_result = $stmt_cart->get_result();
-    $cart_items = $cart_result->fetch_all(MYSQLI_ASSOC);
-
-    $subtotal = 0;
     foreach ($cart_items as $item) {
-        $subtotal += $item['harga'] * $item['jumlah'];
+        $total_price += intval($item['subtotal']);
     }
-    
 } catch (Exception $e) {
-    error_log('Error in pengiriman.php: ' . $e->getMessage());
-    die('Error: ' . $e->getMessage());
+    error_log("Cart query error: " . $e->getMessage());
 }
+
+// Get latest pengiriman for user
+$pengiriman = null;
+$query = "SELECT * FROM pengiriman WHERE id_user = ? ORDER BY tanggal_pengiriman DESC LIMIT 1";
+$stmt = $conn->prepare($query);
+if ($stmt) {
+    $stmt->bind_param('i', $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $pengiriman = $result->fetch_assoc();
+    $stmt->close();
+}
+
+include '../includes/header.php';
 ?>
 
 <style>
-.checkout-steps {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 40px;
-    position: relative;
-}
-.checkout-steps::before {
-    content: '';
-    position: absolute;
-    top: 20px;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: #e0e0e0;
-    z-index: 0;
-}
-.step {
-    text-align: center;
-    flex: 1;
-    position: relative;
-    z-index: 1;
-}
-.step-circle {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: #e0e0e0;
-    color: #999;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 600;
-    margin-bottom: 8px;
-}
-.step.active .step-circle {
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
-}
-.step.completed .step-circle {
-    background: #10b981;
-    color: white;
-}
-.step.completed .step-circle::after {
-    content: '✓';
-    font-weight: bold;
-}
-.step.active .step-label {
-    color: #667eea;
-    font-weight: 600;
-}
-.step-label {
-    font-size: 14px;
-    color: #999;
-}
-
-.form-card {
-    background: white;
-    border-radius: 15px;
-    padding: 25px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-}
-.form-card h5 {
-    font-weight: 700;
-    color: #2c3e50;
-    margin-bottom: 20px;
-    font-size: 18px;
-}
-.form-group-wrapper {
-    margin-bottom: 20px;
-}
-.form-group-wrapper label {
-    font-weight: 600;
-    color: #2c3e50;
-    margin-bottom: 8px;
-    display: block;
-    font-size: 14px;
-}
-.form-group-wrapper input,
-.form-group-wrapper textarea,
-.form-group-wrapper select {
-    width: 100%;
-    padding: 12px 15px;
-    border: 2px solid #e0e0e0;
-    border-radius: 8px;
-    font-size: 14px;
-    transition: border-color 0.3s;
-}
-.form-group-wrapper input:focus,
-.form-group-wrapper textarea:focus,
-.form-group-wrapper select:focus {
-    outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-.form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 15px;
-}
-@media (max-width: 768px) {
-    .form-row {
-        grid-template-columns: 1fr;
+    :root {
+        --primary-color: #667eea;
+        --secondary-color: #764ba2;
+        --text-primary: #2c3e50;
+        --text-secondary: #7f8c8d;
+        --border-color: #ecf0f1;
+        --success-color: #10b981;
     }
-}
 
-.shipping-method {
-    border: 2px solid #e0e0e0;
-    border-radius: 10px;
-    padding: 15px;
-    margin-bottom: 12px;
-    cursor: pointer;
-    transition: all 0.3s;
-}
-.shipping-method:hover {
-    border-color: #667eea;
-    background: #f8f9ff;
-}
-.shipping-method.active {
-    border-color: #667eea;
-    background: #f8f9ff;
-}
-.shipping-method input[type="radio"] {
-    margin-right: 10px;
-}
-.shipping-method-label {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: pointer;
-}
-.shipping-method-label strong {
-    color: #2c3e50;
-}
-.shipping-method-time {
-    font-size: 12px;
-    color: #7f8c8d;
-    margin-top: 5px;
-    margin-left: 24px;
-}
-.shipping-cost {
-    color: #667eea;
-    font-weight: 700;
-    font-size: 15px;
-}
+    body {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        min-height: 100vh;
+    }
 
-.summary-card {
-    background: white;
-    border-radius: 15px;
-    padding: 25px;
-    box-shadow: 0 2px 15px rgba(0,0,0,0.08);
-    position: sticky;
-    top: 100px;
-}
-.summary-card h5 {
-    font-weight: 700;
-    color: #2c3e50;
-    margin-bottom: 20px;
-}
-.summary-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 12px 0;
-    border-bottom: 1px solid #f0f0f0;
-    font-size: 14px;
-}
-.summary-row.total {
-    border-bottom: none;
-    font-size: 18px;
-    font-weight: 700;
-    color: #2c3e50;
-    margin-top: 10px;
-    padding-top: 15px;
-    border-top: 2px solid #f0f0f0;
-}
-.summary-value {
-    font-weight: 600;
-    color: #2c3e50;
-}
+    .container-checkout {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
 
-.product-item {
-    display: flex;
-    justify-content: space-between;
-    font-size: 13px;
-    margin-bottom: 10px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #f0f0f0;
-}
-.product-item:last-child {
-    border-bottom: none;
-}
-.product-name {
-    color: #2c3e50;
-    flex: 1;
-}
-.product-price {
-    color: #667eea;
-    font-weight: 600;
-    text-align: right;
-    margin-left: 10px;
-}
+    /* Progress Bar */
+    .progress-bar-section {
+        background: white;
+        padding: 40px 0;
+        margin-bottom: 40px;
+        box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+    }
 
-.btn-checkout {
-    width: 100%;
-    padding: 15px;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    border: none;
-    border-radius: 10px;
-    color: white;
-    font-weight: 600;
-    font-size: 16px;
-    cursor: pointer;
-    transition: all 0.3s;
-}
-.btn-checkout:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
-}
-.btn-back {
-    width: 100%;
-    padding: 15px;
-    background: #f0f0f0;
-    border: none;
-    border-radius: 10px;
-    color: #2c3e50;
-    font-weight: 600;
-    font-size: 16px;
-    cursor: pointer;
-    margin-top: 10px;
-    transition: all 0.3s;
-}
-.btn-back:hover {
-    background: #e0e0e0;
-}
+    .checkout-steps {
+        display: flex;
+        justify-content: space-between;
+        position: relative;
+    }
 
-.message {
-    padding: 15px;
-    border-radius: 10px;
-    margin-top: 15px;
-    display: none;
-    font-weight: 600;
-}
-.message.show {
-    display: block;
-}
-.message.error {
-    background: #fee2e2;
-    color: #c53030;
-    border: 1px solid #fc8181;
-}
-.message.success {
-    background: #c6f6d5;
-    color: #22543d;
-    border: 1px solid #9ae6b4;
-}
+    .checkout-steps::before {
+        content: '';
+        position: absolute;
+        top: 20px;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: #e0e0e0;
+        z-index: 0;
+    }
+
+    .step {
+        text-align: center;
+        flex: 1;
+        position: relative;
+        z-index: 1;
+    }
+
+    .step-circle {
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        background: #e0e0e0;
+        color: #999;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 18px;
+        margin-bottom: 12px;
+    }
+
+    .step.completed .step-circle {
+        background: var(--success-color);
+        color: white;
+    }
+
+    .step.active .step-circle {
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        color: white;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    }
+
+    .step-label {
+        font-size: 14px;
+        color: #999;
+        font-weight: 500;
+    }
+
+    .step.completed .step-label,
+    .step.active .step-label {
+        color: var(--text-primary);
+        font-weight: 600;
+    }
+
+    /* Cards */
+    .section-card {
+        background: white;
+        border-radius: 15px;
+        padding: 30px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+    }
+
+    .section-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin-bottom: 25px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .section-title i {
+        font-size: 22px;
+        color: var(--primary-color);
+    }
+
+    /* Product List */
+    .product-item {
+        display: flex;
+        gap: 15px;
+        align-items: flex-start;
+        padding: 15px;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        margin-bottom: 12px;
+    }
+
+    .product-item-image {
+        width: 100px;
+        height: 100px;
+        border-radius: 8px;
+        object-fit: cover;
+        background: #f0f0f0;
+        flex-shrink: 0;
+    }
+
+    .product-item-info {
+        flex: 1;
+    }
+
+    .product-item-name {
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 8px;
+    }
+
+    .product-item-price {
+        font-size: 14px;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+    }
+
+    .product-item-qty {
+        font-size: 14px;
+        color: var(--text-secondary);
+    }
+
+    .product-item-subtotal {
+        font-weight: 700;
+        color: var(--primary-color);
+        text-align: right;
+        min-width: 100px;
+    }
+
+    /* Form */
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: var(--text-primary);
+        font-size: 14px;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        font-size: 14px;
+        color: var(--text-primary);
+        font-family: inherit;
+        transition: all 0.3s ease;
+    }
+
+    .form-control:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        outline: none;
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+
+    /* Summary */
+    .summary-card {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+        position: sticky;
+        top: 100px;
+    }
+
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 14px;
+    }
+
+    .summary-row.total {
+        border-top: 2px solid var(--border-color);
+        border-bottom: none;
+        padding-top: 14px;
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--primary-color);
+    }
+
+    .summary-label {
+        color: var(--text-secondary);
+    }
+
+    .summary-value {
+        color: var(--text-primary);
+        font-weight: 600;
+    }
+
+    /* Buttons */
+    .btn-action {
+        width: 100%;
+        padding: 14px;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 15px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        display: inline-block;
+        text-align: center;
+        margin-top: 20px;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        color: white;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        color: white;
+        text-decoration: none;
+    }
+
+    .btn-secondary {
+        background: var(--border-color);
+        color: var(--text-primary);
+    }
+
+    .btn-secondary:hover {
+        background: #d0d0d0;
+        color: var(--text-primary);
+    }
+
+    @media (max-width: 768px) {
+        .form-row {
+            grid-template-columns: 1fr;
+        }
+
+        .product-item {
+            flex-direction: column;
+        }
+
+        .product-item-image {
+            width: 100%;
+            height: 150px;
+        }
+    }
 </style>
 
-<div class="container py-5">
-    <!-- Progress Steps -->
-    <div class="checkout-steps">
-        <div class="step completed">
-            <div class="step-circle">✓</div>
-            <div class="step-label">Keranjang</div>
-        </div>
-        <div class="step active">
-            <div class="step-circle">2</div>
-            <div class="step-label">Pengiriman</div>
-        </div>
-        <div class="step">
-            <div class="step-circle">3</div>
-            <div class="step-label">Pembayaran</div>
-        </div>
-        <div class="step">
-            <div class="step-circle">4</div>
-            <div class="step-label">Selesai</div>
+<!-- Progress Bar -->
+<div class="progress-bar-section">
+    <div class="container-checkout">
+        <div class="checkout-steps">
+            <div class="step completed">
+                <div class="step-circle">✓</div>
+                <div class="step-label">Keranjang</div>
+            </div>
+            <div class="step active">
+                <div class="step-circle">2</div>
+                <div class="step-label">Pengiriman</div>
+            </div>
+            <div class="step">
+                <div class="step-circle">3</div>
+                <div class="step-label">Pembayaran</div>
+            </div>
+            <div class="step">
+                <div class="step-circle">4</div>
+                <div class="step-label">Selesai</div>
+            </div>
         </div>
     </div>
+</div>
 
+<!-- Main Content -->
+<div class="container-checkout py-5">
     <div class="row">
         <div class="col-lg-8">
-            <form id="shippingForm">
-                <!-- Data Penerima -->
-                <div class="form-card">
-                    <h5>👤 Data Penerima</h5>
+            <!-- Order Items -->
+            <div class="section-card">
+                <div class="section-title">
+                    <i class="bi bi-box"></i>
+                    Produk Pesanan
+                </div>
+                <?php foreach ($cart_items as $item): 
+                    $gambar = !empty($item['gambar_produk']) 
+                        ? '../assets/images/produk/' . htmlspecialchars($item['gambar_produk'])
+                        : '../assets/images/placeholder.png';
+                ?>
+                <div class="product-item">
+                    <img src="<?php echo $gambar; ?>" alt="<?php echo htmlspecialchars($item['nama_produk']); ?>" class="product-item-image" onerror="this.src='../assets/images/placeholder.png';">
+                    <div class="product-item-info">
+                        <div class="product-item-name"><?php echo htmlspecialchars($item['nama_produk']); ?></div>
+                        <div class="product-item-price">Rp <?php echo number_format(intval($item['harga']), 0, ',', '.'); ?></div>
+                        <div class="product-item-qty">Jumlah: <?php echo intval($item['jumlah']); ?> pcs</div>
+                    </div>
+                    <div class="product-item-subtotal">Rp <?php echo number_format(intval($item['subtotal']), 0, ',', '.'); ?></div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+
+            <!-- Shipping Address -->
+            <div class="section-card">
+                <div class="section-title">
+                    <i class="bi bi-geo-alt"></i>
+                    Alamat Pengiriman
+                </div>
+                <form action="proses-pengiriman.php" method="POST" id="shippingForm">
                     <div class="form-row">
-                        <div class="form-group-wrapper">
-                            <label>Nama Penerima *</label>
-                            <input type="text" id="nama_penerima" name="nama_penerima" value="<?php echo htmlspecialchars($user['nama_lengkap'] ?? ''); ?>" required>
+                        <div class="form-group">
+                            <label class="form-label">Nama Penerima *</label>
+                            <input type="text" class="form-control" name="nama_penerima" required value="<?php echo htmlspecialchars($pengiriman['nama_penerima'] ?? ''); ?>">
                         </div>
-                        <div class="form-group-wrapper">
-                            <label>Nomor Telepon *</label>
-                            <input type="tel" id="no_telepon" name="no_telepon" value="<?php echo htmlspecialchars($user['no_telepon'] ?? ''); ?>" required>
+                        <div class="form-group">
+                            <label class="form-label">No. Telepon *</label>
+                            <input type="tel" class="form-control" name="no_telepon" required value="<?php echo htmlspecialchars($pengiriman['no_telepon'] ?? ''); ?>">
                         </div>
                     </div>
-                    <div class="form-group-wrapper">
-                        <label>Email *</label>
-                        <input type="email" id="email" name="email" value="<?php echo htmlspecialchars($user['email'] ?? ''); ?>" required>
-                    </div>
-                </div>
 
-                <!-- Alamat Pengiriman -->
-                <div class="form-card">
-                    <h5>📍 Alamat Pengiriman</h5>
-                    <div class="form-group-wrapper">
-                        <label>Alamat Lengkap *</label>
-                        <textarea id="alamat_lengkap" name="alamat_lengkap" rows="3" required placeholder="Jalan, nomor rumah, kelurahan, RT/RW"></textarea>
+                    <div class="form-group">
+                        <label class="form-label">Alamat Lengkap *</label>
+                        <textarea class="form-control" name="alamat_lengkap" rows="3" required><?php echo htmlspecialchars($pengiriman['alamat_lengkap'] ?? ''); ?></textarea>
                     </div>
+
                     <div class="form-row">
-                        <div class="form-group-wrapper">
-                            <label>Provinsi *</label>
-                            <input type="text" id="provinsi" name="provinsi" placeholder="cth: Jawa Barat" required>
+                        <div class="form-group">
+                            <label class="form-label">Provinsi *</label>
+                            <input type="text" class="form-control" name="provinsi" required value="<?php echo htmlspecialchars($pengiriman['provinsi'] ?? ''); ?>">
                         </div>
-                        <div class="form-group-wrapper">
-                            <label>Kota/Kabupaten *</label>
-                            <input type="text" id="kota" name="kota" placeholder="cth: Bandung" required>
+                        <div class="form-group">
+                            <label class="form-label">Kota *</label>
+                            <input type="text" class="form-control" name="kota" required value="<?php echo htmlspecialchars($pengiriman['kota'] ?? ''); ?>">
                         </div>
                     </div>
+
                     <div class="form-row">
-                        <div class="form-group-wrapper">
-                            <label>Kecamatan *</label>
-                            <input type="text" id="kecamatan" name="kecamatan" placeholder="cth: Cibeunying Kidul" required>
+                        <div class="form-group">
+                            <label class="form-label">Kecamatan *</label>
+                            <input type="text" class="form-control" name="kecamatan" required value="<?php echo htmlspecialchars($pengiriman['kecamatan'] ?? ''); ?>">
                         </div>
-                        <div class="form-group-wrapper">
-                            <label>Kode Pos *</label>
-                            <input type="text" id="kode_pos" name="kode_pos" placeholder="cth: 40141" required>
-                        </div>
-                    </div>
-                    <div class="form-group-wrapper">
-                        <label>Catatan Pengiriman (Opsional)</label>
-                        <textarea id="catatan" name="catatan" rows="2" placeholder="cth: Titip ke tetangga jika tidak ada"></textarea>
-                    </div>
-                </div>
-
-                <!-- Metode Pengiriman -->
-                <div class="form-card">
-                    <h5>🚚 Metode Pengiriman</h5>
-                    
-                    <div class="shipping-method active" onclick="selectShipping(this, 'regular', 20000)">
-                        <div class="shipping-method-label">
-                            <div>
-                                <input type="radio" name="metode_pengiriman" id="regular" value="regular" checked>
-                                <label for="regular" style="cursor: pointer; margin: 0; display: inline;">
-                                    <strong>🚚 Regular (5-7 Hari)</strong>
-                                </label>
-                                <div class="shipping-method-time">Pengiriman standar ke seluruh Indonesia</div>
-                            </div>
-                            <span class="shipping-cost">Rp 20.000</span>
+                        <div class="form-group">
+                            <label class="form-label">Kode Pos *</label>
+                            <input type="text" class="form-control" name="kode_pos" required value="<?php echo htmlspecialchars($pengiriman['kode_pos'] ?? ''); ?>">
                         </div>
                     </div>
 
-                    <div class="shipping-method" onclick="selectShipping(this, 'express', 50000)">
-                        <div class="shipping-method-label">
-                            <div>
-                                <input type="radio" name="metode_pengiriman" id="express" value="express">
-                                <label for="express" style="cursor: pointer; margin: 0; display: inline;">
-                                    <strong>⚡ Express (2-3 Hari)</strong>
-                                </label>
-                                <div class="shipping-method-time">Pengiriman lebih cepat ke kota-kota besar</div>
-                            </div>
-                            <span class="shipping-cost">Rp 50.000</span>
-                        </div>
+                    <div class="form-group">
+                        <label class="form-label">Metode Pengiriman *</label>
+                        <select class="form-control" name="metode_pengiriman" required>
+                            <option value="">-- Pilih Metode --</option>
+                            <option value="reguler" <?php echo (isset($pengiriman['metode_pengiriman']) && $pengiriman['metode_pengiriman'] === 'reguler') ? 'selected' : ''; ?>>Reguler (3-5 hari)</option>
+                            <option value="express" <?php echo (isset($pengiriman['metode_pengiriman']) && $pengiriman['metode_pengiriman'] === 'express') ? 'selected' : ''; ?>>Express (1-2 hari)</option>
+                            <option value="same_day" <?php echo (isset($pengiriman['metode_pengiriman']) && $pengiriman['metode_pengiriman'] === 'same_day') ? 'selected' : ''; ?>>Same Day (Hari Sama)</option>
+                        </select>
                     </div>
 
-                    <div class="shipping-method" onclick="selectShipping(this, 'same_day', 100000)">
-                        <div class="shipping-method-label">
-                            <div>
-                                <input type="radio" name="metode_pengiriman" id="same_day" value="same_day">
-                                <label for="same_day" style="cursor: pointer; margin: 0; display: inline;">
-                                    <strong>🏃 Same Day (Hari Sama)</strong>
-                                </label>
-                                <div class="shipping-method-time">Pengiriman di hari yang sama (Jakarta & sekitarnya)</div>
-                            </div>
-                            <span class="shipping-cost">Rp 100.000</span>
-                        </div>
+                    <div class="form-group">
+                        <label class="form-label">Ongkos Kirim (Rp) *</label>
+                        <input type="number" class="form-control" name="ongkir" id="ongkir" min="0" required value="<?php echo htmlspecialchars($pengiriman['ongkir'] ?? '0'); ?>" onchange="updateTotal()">
                     </div>
-
-                    <div id="message" class="message"></div>
-                </div>
-
-                <!-- Action Buttons -->
-                <div style="display: flex; gap: 10px;">
-                    <button type="button" class="btn-back" onclick="history.back()">← Kembali</button>
-                    <button type="submit" class="btn-checkout" style="flex: 1; margin-top: 0;">Lanjut ke Pembayaran →</button>
-                </div>
-            </form>
+                </form>
+            </div>
         </div>
 
+        <!-- Sidebar - Summary -->
         <div class="col-lg-4">
-            <!-- Summary Card -->
             <div class="summary-card">
-                <h5>📋 Ringkasan Belanja</h5>
-                
-                <div style="max-height: 300px; overflow-y: auto; margin-bottom: 15px;">
-                    <?php foreach ($cart_items as $item): ?>
-                        <div class="product-item">
-                            <span class="product-name"><?php echo htmlspecialchars($item['nama_produk']); ?> x<?php echo $item['jumlah']; ?></span>
-                            <span class="product-price">Rp <?php echo number_format($item['harga'] * $item['jumlah']); ?></span>
-                        </div>
-                    <?php endforeach; ?>
+                <div class="section-title" style="margin-bottom: 20px;">
+                    <i class="bi bi-calculator"></i>
+                    Ringkasan Pesanan
                 </div>
 
                 <div class="summary-row">
-                    <span>Subtotal</span>
-                    <span class="summary-value" id="subtotal-display">Rp <?php echo number_format($subtotal); ?></span>
+                    <span class="summary-label">Subtotal Produk</span>
+                    <span class="summary-value" id="subtotal">Rp <?php echo number_format($total_price, 0, ',', '.'); ?></span>
                 </div>
                 <div class="summary-row">
-                    <span>Diskon</span>
-                    <span class="summary-value" style="color: #10b981;">-Rp 0</span>
+                    <span class="summary-label">Ongkos Kirim</span>
+                    <span class="summary-value" id="ongkir-display">Rp <?php echo number_format(intval($pengiriman['ongkir'] ?? 0), 0, ',', '.'); ?></span>
                 </div>
-                <div class="summary-row">
-                    <span>Ongkir</span>
-                    <span class="summary-value" id="ongkir-display">Rp 20.000</span>
-                </div>
+
                 <div class="summary-row total">
                     <span>Total</span>
-                    <span id="total-display" style="color: #667eea;">Rp <?php echo number_format($subtotal + 20000); ?></span>
+                    <span id="total-display">Rp <?php echo number_format($total_price + intval($pengiriman['ongkir'] ?? 0), 0, ',', '.'); ?></span>
                 </div>
+
+                <button form="shippingForm" type="submit" class="btn-action btn-primary">
+                    <i class="bi bi-arrow-right"></i> Lanjut ke Pembayaran
+                </button>
+                <button type="button" class="btn-action btn-secondary" onclick="history.back();">
+                    <i class="bi bi-arrow-left"></i> Kembali
+                </button>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-const subtotal = <?php echo $subtotal; ?>;
-const form = document.getElementById('shippingForm');
-const messageDiv = document.getElementById('message');
-const ongkirDisplay = document.getElementById('ongkir-display');
-const totalDisplay = document.getElementById('total-display');
+const subtotalValue = <?php echo $total_price; ?>;
 
-function selectShipping(element, method, cost) {
-    // Remove active class from all
-    document.querySelectorAll('.shipping-method').forEach(card => {
-        card.classList.remove('active');
-    });
+function updateTotal() {
+    const ongkir = parseInt(document.getElementById('ongkir').value) || 0;
+    const total = subtotalValue + ongkir;
     
-    // Add active class to clicked
-    element.classList.add('active');
-    document.getElementById(method).checked = true;
-    
-    // Update totals
-    const total = subtotal + cost;
-    ongkirDisplay.textContent = 'Rp ' + cost.toLocaleString('id-ID');
-    totalDisplay.textContent = 'Rp ' + total.toLocaleString('id-ID');
+    document.getElementById('ongkir-display').innerText = 'Rp ' + new Intl.NumberFormat('id-ID').format(ongkir);
+    document.getElementById('total-display').innerText = 'Rp ' + new Intl.NumberFormat('id-ID').format(total);
 }
-
-form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const formData = new FormData(form);
-
-    try {
-        const response = await fetch('../api/checkout-handler.php', {
-            method: 'POST',
-            body: formData
-        });
-
-        const result = await response.json();
-        
-        console.log('Checkout API Response:', result);
-
-        if (result.success) {
-            // Redirect to confirmation page with transaction ID
-            window.location.href = 'konfirmasi-pesanan.php?id=' + result.id_transaksi;
-        } else {
-            messageDiv.textContent = result.message || 'Terjadi kesalahan';
-            messageDiv.className = 'message show error';
-            console.error('Checkout error:', result.message);
-        }
-    } catch (error) {
-        messageDiv.textContent = 'Error: ' + error.message;
-        messageDiv.className = 'message show error';
-        console.error('Fetch error:', error);
-    }
-});
 </script>
 
 <?php include '../includes/footer.php'; ?>
