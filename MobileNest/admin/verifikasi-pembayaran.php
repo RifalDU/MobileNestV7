@@ -4,6 +4,7 @@ ini_set('display_errors', 1);
 
 session_start();
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/upload-handler.php';
 
 // autentikasi
 if (!isset($_SESSION['admin']) && !isset($_SESSION['user'])) {
@@ -11,25 +12,24 @@ if (!isset($_SESSION['admin']) && !isset($_SESSION['user'])) {
     exit;
 }
 
-// handle approve/reject
+// handle approve/reject - FIX: Add error handling
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $id_transaksi = (int)($_POST['id_transaksi'] ?? 0);
 
-    if ($action === 'approve' && $id_transaksi > 0) {
-        $query = "UPDATE transaksi SET status_pesanan = 'Verified', tanggal_diperabarui = NOW() WHERE id_transaksi = $id_transaksi";
-        mysqli_query($conn, $query);
-        $_SESSION['msg'] = 'Pembayaran berhasil disetujui!';
-        $_SESSION['msg_type'] = 'success';
-        header('Location: verifikasi-pembayaran.php');
-        exit;
-    }
-
-    if ($action === 'reject' && $id_transaksi > 0) {
-        $query = "UPDATE transaksi SET status_pesanan = 'Dibatalkan', tanggal_diperabarui = NOW() WHERE id_transaksi = $id_transaksi";
-        mysqli_query($conn, $query);
-        $_SESSION['msg'] = 'Pembayaran ditolak!';
-        $_SESSION['msg_type'] = 'warning';
+    if (($action === 'approve' || $action === 'reject') && $id_transaksi > 0) {
+        // ✅ FIX: Add error handling
+        $new_status = ($action === 'approve') ? 'Verified' : 'Dibatalkan';
+        $query = "UPDATE transaksi SET status_pesanan = '" . mysqli_real_escape_string($conn, $new_status) . "', tanggal_diperabarui = NOW() WHERE id_transaksi = $id_transaksi";
+        
+        if (mysqli_query($conn, $query)) {
+            $_SESSION['msg'] = ($action === 'approve') ? 'Pembayaran berhasil disetujui!' : 'Pembayaran ditolak!';
+            $_SESSION['msg_type'] = ($action === 'approve') ? 'success' : 'warning';
+        } else {
+            $_SESSION['msg'] = 'Error: ' . mysqli_error($conn);
+            $_SESSION['msg_type'] = 'danger';
+        }
+        
         header('Location: verifikasi-pembayaran.php');
         exit;
     }
@@ -193,11 +193,12 @@ if (!empty($_GET['id'])) {
                         </div>
 
                         <div style="padding: 20px;">
-                            <!-- Bukti Pembayaran -->
+                            <!-- Bukti Pembayaran - ✅ FIX: Use UploadHandler::getFileUrl -->
                             <div style="margin-bottom: 25px;">
                                 <h6 style="font-weight: 600; margin-bottom: 10px;"><i class="bi bi-image"></i> Bukti Pembayaran</h6>
                                 <?php if (!empty($selected_payment['bukti_pembayaran'])): ?>
-                                    <img src="../uploads/pembayaran/<?= urlencode($selected_payment['bukti_pembayaran']) ?>" alt="Bukti Pembayaran" class="payment-proof">
+                                    <?php $payment_proof_url = UploadHandler::getFileUrl($selected_payment['bukti_pembayaran'], 'pembayaran'); ?>
+                                    <img src="<?= htmlspecialchars($payment_proof_url) ?>" alt="Bukti Pembayaran" class="payment-proof" onerror="this.src='https://via.placeholder.com/400x300?text=Image+Not+Found'">
                                 <?php else: ?>
                                     <p class="text-muted"><i class="bi bi-exclamation-circle"></i> Bukti pembayaran tidak ditemukan</p>
                                 <?php endif; ?>
