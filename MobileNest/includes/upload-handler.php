@@ -2,13 +2,14 @@
 /**
  * Upload Handler for MobileNest
  * Secure file upload handler for products and payment proofs
+ * NOTE: Files are stored in admin/uploads/ folder, not root uploads/
  */
 
 class UploadHandler {
     
-    // Configuration
-    const UPLOAD_DIR_PRODUK = 'uploads/produk/';
-    const UPLOAD_DIR_PEMBAYARAN = 'uploads/pembayaran/';
+    // Configuration - CORRECTED PATHS
+    const UPLOAD_DIR_PRODUK = '../uploads/produk/';  // From includes/ perspective: ../uploads/produk/
+    const UPLOAD_DIR_PEMBAYARAN = '../uploads/pembayaran/';  // From includes/ perspective
     const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
     
     // Allowed MIME types
@@ -149,7 +150,8 @@ class UploadHandler {
     }
     
     /**
-     * Get file URL (returns full URL instead of relative path)
+     * Get file URL (returns full URL for display)
+     * Located at: /admin/uploads/produk/ or /admin/uploads/pembayaran/
      * 
      * @param string $filename Filename
      * @param string $type Type of file ('produk' or 'pembayaran')
@@ -159,22 +161,31 @@ class UploadHandler {
         // Use constants from config.php if available
         if (defined('UPLOADS_PRODUK_URL') && $type === 'produk') {
             return UPLOADS_PRODUK_URL . $filename;
+            // Returns: http://localhost/MobileNest/admin/uploads/produk/produk_123.jpg
         }
         if (defined('UPLOADS_PEMBAYARAN_URL') && $type === 'pembayaran') {
             return UPLOADS_PEMBAYARAN_URL . $filename;
+            // Returns: http://localhost/MobileNest/admin/uploads/pembayaran/pembayaran_123.jpg
         }
         
-        // Fallback to constructing URL manually
-        $upload_dir = ($type === 'pembayaran') ? self::UPLOAD_DIR_PEMBAYARAN : self::UPLOAD_DIR_PRODUK;
+        // Fallback if constant not defined
+        $subdir = ($type === 'pembayaran') ? 'pembayaran' : 'produk';
         
         // Try to determine SITE_URL from current request
         $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? 'https://' : 'http://';
-        $site_url = $protocol . $_SERVER['HTTP_HOST'] . dirname($_SERVER['SCRIPT_NAME']);
+        $host = $_SERVER['HTTP_HOST'];
         
-        // Remove /admin or /user or /produk from end if present
-        $site_url = preg_replace('#/(admin|user|produk)/?$#', '', $site_url);
+        // Build base URL by removing everything after /admin or /MobileNest
+        $script_name = $_SERVER['SCRIPT_NAME'];  // e.g., /MobileNest/admin/kelola-produk.php
         
-        return $site_url . '/' . $upload_dir . $filename;
+        // Extract site root
+        if (strpos($script_name, '/admin/') !== false) {
+            $base_url = substr($script_name, 0, strpos($script_name, '/admin/'));
+        } else {
+            $base_url = dirname(dirname($script_name));
+        }
+        
+        return $protocol . $host . $base_url . '/admin/uploads/' . $subdir . '/' . $filename;
     }
 }
 ?>
