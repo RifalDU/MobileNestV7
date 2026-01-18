@@ -3,7 +3,7 @@
  * FILE: filter.js
  * PURPOSE: Handle product filtering
  * MODE: HYBRID (PHP initial render + AJAX filter)
- * FIX: Handle both base64 images and file paths
+ * FIX: Correct image URL building + fallback
  * FIX: Remove cart button when filtering (only "Lihat Detail")
  * ============================================
  */
@@ -213,6 +213,7 @@ function renderProducts(products) {
     // Render product cards
     container.innerHTML = products.map(product => {
         const imageUrl = buildImageUrl(product.gambar);
+        const productId = `product-${product.id_produk}`;
         console.log('Product:', product.nama_produk, '- gambar:', product.gambar, '- URL:', imageUrl);
         return `
         <div class="product-card" data-product-id="${product.id_produk}">
@@ -220,7 +221,8 @@ function renderProducts(products) {
                 <!-- Product Image -->
                 <div class="card-img-top bg-light d-flex align-items-center justify-content-center" style="height: 200px; position: relative; overflow: hidden;">
                     ${imageUrl ? `
-                        <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.nama_produk)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="console.error('Image failed to load:', this.src);">
+                        <img id="${productId}" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.nama_produk)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="document.getElementById('${productId}').style.display='none'; document.getElementById('${productId}-fallback').style.display='flex';">
+                        <i id="${productId}-fallback" class="bi bi-phone" style="font-size: 3rem; color: #ccc; display: none; align-items: center; justify-content: center;"></i>
                     ` : `
                         <i class="bi bi-phone" style="font-size: 3rem; color: #ccc;"></i>
                     `}
