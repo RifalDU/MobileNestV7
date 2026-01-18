@@ -3,6 +3,7 @@
  */
 
 const SHIPPING_COST = 20000;
+const UPLOADS_PRODUK_URL = 'http://localhost/MobileNest/admin/uploads/produk/';
 
 /**
  * Update cart count badge in navbar
@@ -23,6 +24,30 @@ async function updateCartCount() {
     } catch (error) {
         console.error('Error updating cart count:', error);
     }
+}
+
+/**
+ * Get product image URL
+ * @param {string} gambar - Filename from database (e.g., 'produk_123_abc.jpg')
+ * @returns {string} Full image URL
+ */
+function getProductImageUrl(gambar) {
+    if (!gambar) {
+        return '../assets/images/placeholder.jpg';
+    }
+    
+    // If it's already a full URL
+    if (gambar.startsWith('http://') || gambar.startsWith('https://')) {
+        return gambar;
+    }
+    
+    // If it's just a filename, add the uploads path
+    if (!gambar.includes('/')) {
+        return UPLOADS_PRODUK_URL + gambar;
+    }
+    
+    // If it's a path, prepend site URL
+    return '../' + gambar;
 }
 
 /**
@@ -98,11 +123,15 @@ async function loadCartItems() {
             const subtotal = harga * quantity;
             totalPrice += subtotal;
             
+            // Get correct image URL ✅
+            const imageUrl = getProductImageUrl(item.gambar);
+            
             console.log(`Item: ${item.nama_produk}, Qty: ${quantity}, Price: ${harga}, Subtotal: ${subtotal}`);
+            console.log(`Image URL: ${imageUrl}`);
             
             html += `
                 <div class="cart-item">
-                    <img src="${item.gambar || '../assets/images/placeholder.jpg'}" alt="${item.nama_produk}">
+                    <img src="${imageUrl}" alt="${item.nama_produk}" onerror="this.src='../assets/images/placeholder.jpg'">
                     <div class="cart-item-info">
                         <div class="cart-item-title">${item.nama_produk}</div>
                         <div class="cart-item-price">Harga: Rp ${formatPrice(harga)}</div>
