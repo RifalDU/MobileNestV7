@@ -12,21 +12,31 @@ if (!isset($_SESSION['admin']) && !isset($_SESSION['user'])) {
     exit;
 }
 
-// handle approve/reject - FIX: Add error handling
+// handle approve/reject - FIX: Use simple VARCHAR instead of ENUM
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $id_transaksi = (int)($_POST['id_transaksi'] ?? 0);
 
     if (($action === 'approve' || $action === 'reject') && $id_transaksi > 0) {
-        // ✅ FIX: Add error handling
-        $new_status = ($action === 'approve') ? 'Verified' : 'Dibatalkan';
-        $query = "UPDATE transaksi SET status_pesanan = '" . mysqli_real_escape_string($conn, $new_status) . "', tanggal_diperabarui = NOW() WHERE id_transaksi = $id_transaksi";
+        // ✅ FIX: Use simple string values instead of ENUM
+        $new_status = ($action === 'approve') ? 'Diproses' : 'Dibatalkan';
         
-        if (mysqli_query($conn, $query)) {
-            $_SESSION['msg'] = ($action === 'approve') ? 'Pembayaran berhasil disetujui!' : 'Pembayaran ditolak!';
-            $_SESSION['msg_type'] = ($action === 'approve') ? 'success' : 'warning';
+        // ✅ Use prepared statement for safety
+        $stmt = $conn->prepare("UPDATE transaksi SET status_pesanan = ?, tanggal_diperbarui = NOW() WHERE id_transaksi = ?");
+        
+        if ($stmt) {
+            $stmt->bind_param('si', $new_status, $id_transaksi);
+            
+            if ($stmt->execute()) {
+                $_SESSION['msg'] = ($action === 'approve') ? '✅ Pembayaran berhasil diverifikasi! Status: Diproses' : '❌ Pembayaran ditolak!';
+                $_SESSION['msg_type'] = ($action === 'approve') ? 'success' : 'warning';
+            } else {
+                $_SESSION['msg'] = '⚠️ Error update: ' . $stmt->error;
+                $_SESSION['msg_type'] = 'danger';
+            }
+            $stmt->close();
         } else {
-            $_SESSION['msg'] = 'Error: ' . mysqli_error($conn);
+            $_SESSION['msg'] = '⚠️ Error prepare: ' . $conn->error;
             $_SESSION['msg_type'] = 'danger';
         }
         
@@ -35,8 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Get pending payments
-$query_list = "SELECT id_transaksi, kode_transaksi, id_user, total_harga, tanggal_transaksi, bukti_pembayaran, status_pesanan FROM transaksi WHERE status_pesanan = 'Menunggu Verifikasi' OR status_pesanan = 'Menunggu Pembayaran' ORDER BY tanggal_transaksi DESC";
+// Get pending payments - FIX: Don't rely on specific status values
+$query_list = "SELECT id_transaksi, kode_transaksi, id_user, total_harga, tanggal_transaksi, bukti_pembayaran, status_pesanan FROM transaksi WHERE status_pesanan IN ('Menunggu Verifikasi', 'Menunggu Pembayaran', 'Menunggu Konfirmasi') ORDER BY tanggal_transaksi DESC";
 $result = mysqli_query($conn, $query_list);
 
 if (!$result) {
@@ -50,30 +60,20 @@ $selected_payment = null;
 if (!empty($_GET['id'])) {
     $selected_id = (int)$_GET['id'];
     
-    $query_detail = "SELECT * FROM transaksi WHERE id_transaksi = $selected_id AND (status_pesanan = 'Menunggu Verifikasi' OR status_pesanan = 'Menunggu Pembayaran')";
+    $query_detail = "SELECT * FROM transaksi WHERE id_transaksi = $selected_id";
     $detail_result = mysqli_query($conn, $query_detail);
     
     if ($detail_result && mysqli_num_rows($detail_result) > 0) {
         $selected_payment = mysqli_fetch_assoc($detail_result);
 
-        // get user info - FIX: use no_telepon instead of nomor_hp
+        // get user info
         $user_query = "SELECT id_user, nama_lengkap, email, no_telepon FROM users WHERE id_user = " . (int)$selected_payment['id_user'];
         $user_result = mysqli_query($conn, $user_query);
         if ($user_result) {
             $selected_payment['user'] = mysqli_fetch_assoc($user_result);
         }
 
-        // FIX: Remove pengiriman query - field tidak ada di transaksi
-        // Uncomment jika ada field id_pengiriman di transaksi
-        // if (!empty($selected_payment['id_pengiriman'])) {
-        //     $ship_query = "SELECT * FROM pengiriman WHERE id_pengiriman = " . (int)$selected_payment['id_pengiriman'];
-        //     $ship_result = mysqli_query($conn, $ship_query);
-        //     if ($ship_result) {
-        //         $selected_payment['pengiriman'] = mysqli_fetch_assoc($ship_result);
-        //     }
-        // }
-
-        // get transaksi items - FIX: JOIN dengan produk untuk get nama_produk
+        // get transaksi items - JOIN dengan produk
         $items_query = "SELECT dt.id_produk, p.nama_produk, dt.harga_satuan, dt.jumlah, dt.subtotal FROM detail_transaksi dt LEFT JOIN produk p ON dt.id_produk = p.id_produk WHERE dt.id_transaksi = $selected_id";
         $items_result = mysqli_query($conn, $items_query);
         $selected_payment['items'] = [];
@@ -193,7 +193,7 @@ if (!empty($_GET['id'])) {
                         </div>
 
                         <div style="padding: 20px;">
-                            <!-- Bukti Pembayaran - ✅ FIX: Use UploadHandler::getFileUrl -->
+                            <!-- Bukti Pembayaran -->
                             <div style="margin-bottom: 25px;">
                                 <h6 style="font-weight: 600; margin-bottom: 10px;"><i class="bi bi-image"></i> Bukti Pembayaran</h6>
                                 <?php if (!empty($selected_payment['bukti_pembayaran'])): ?>
@@ -225,12 +225,12 @@ if (!empty($_GET['id'])) {
 
                             <hr>
 
-                            <!-- Info Pengiriman (dari transaksi) -->
+                            <!-- Info Pengiriman -->
                             <h6 style="font-weight: 600; margin-bottom: 15px;"><i class="bi bi-box-seam"></i> Alamat Pengiriman</h6>
-                            <?php if (!empty($selected_payment['alamat_pengiriman']) || !empty($selected_payment['no_resi'])): ?>
+                            <?php if (!empty($selected_payment['alamat_pengiriman'])): ?>
                                 <div class="info-row">
                                     <span class="info-label">Alamat:</span>
-                                    <span><?= htmlspecialchars($selected_payment['alamat_pengiriman'] ?? '-') ?></span>
+                                    <span><?= htmlspecialchars($selected_payment['alamat_pengiriman']) ?></span>
                                 </div>
                                 <div class="info-row" style="border-bottom: none;">
                                     <span class="info-label">Ekspedisi:</span>
@@ -286,8 +286,8 @@ if (!empty($_GET['id'])) {
                                 <form method="post" class="w-100">
                                     <input type="hidden" name="action" value="approve">
                                     <input type="hidden" name="id_transaksi" value="<?= (int)$selected_payment['id_transaksi'] ?>">
-                                    <button type="submit" class="btn btn-success w-100" onclick="return confirm('Setujui pembayaran ini?');">
-                                        <i class="bi bi-check-circle"></i> Setujui Pembayaran
+                                    <button type="submit" class="btn btn-success w-100" onclick="return confirm('Verifikasi pembayaran ini?');">
+                                        <i class="bi bi-check-circle"></i> Verifikasi Pembayaran
                                     </button>
                                 </form>
                             </div>
@@ -295,7 +295,7 @@ if (!empty($_GET['id'])) {
                                 <form method="post" class="w-100">
                                     <input type="hidden" name="action" value="reject">
                                     <input type="hidden" name="id_transaksi" value="<?= (int)$selected_payment['id_transaksi'] ?>">
-                                    <button type="submit" class="btn btn-danger w-100" onclick="return confirm('Tolak pembayaran ini? Pesanan akan dibatalkan.');">
+                                    <button type="submit" class="btn btn-danger w-100" onclick="return confirm('Tolak pembayaran ini?');">
                                         <i class="bi bi-x-circle"></i> Tolak Pembayaran
                                     </button>
                                 </form>
